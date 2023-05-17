@@ -2,6 +2,7 @@ import imdb
 import streamlit as st
 import joblib
 import pandas as pd
+from PIL import Image
 from sklearn.metrics.pairwise import cosine_similarity
 from uszipcode import SearchEngine
 
@@ -23,6 +24,7 @@ def main():
         cluster_number = predict_cluster(gender, age, occupation, selected_zipcode)
         st.success("Predicted Cluster Number: {}".format(cluster_number))
 
+
 def display_recommendations():
     cluster_number = int(st.experimental_get_query_params().get("cluster", [0])[0])
 
@@ -42,23 +44,8 @@ def display_recommendations():
         # Get movie details from IMDb
         movie_info = get_movie_info(movie_title)
         if movie_info is not None:
-            st.image(movie_info['poster'])
+            display_image(movie_info['poster'])
 
-    st.markdown("---")  # Add a separator
-
-    # Get the top 5 recommended movies based on ratings
-    average_ratings = clustered_df.groupby('title')['rating'].mean()
-    sorted_ratings = average_ratings.sort_values(ascending=False)
-    recommended_movies = sorted_ratings[:5]
-
-    # Display recommended movies
-    st.subheader("Recommended Movies:")
-    for movie_title, rating in recommended_movies.items():
-        st.write("- {} (Rating: {:.2f})".format(movie_title, rating))
-        # Get movie details from IMDb
-        movie_info = get_movie_info(movie_title)
-        if movie_info is not None:
-            st.image(movie_info['poster'])
 
 def content_based_recommendations():
     st.title("Content-Based Recommendations")
@@ -79,7 +66,8 @@ def content_based_recommendations():
         # Get movie details from IMDb
         movie_info = get_movie_info(row['title'])
         if movie_info is not None:
-            st.image(movie_info['poster'])
+            display_image(movie_info['poster'])
+
 
 def item_based_recommendations():
     st.title("Item-Based Recommendations")
@@ -104,7 +92,8 @@ def item_based_recommendations():
         # Get movie details from IMDb
         movie_info = get_movie_info(row['title'])
         if movie_info is not None:
-            st.image(movie_info['poster'])
+            display_image(movie_info['poster'])
+
 
 def predict_cluster(gender, age, occupation, zipcode):
     # Load the KMeans model
@@ -119,6 +108,7 @@ def predict_cluster(gender, age, occupation, zipcode):
 
     return cluster_number[0]
 
+
 # Define a function to get the state for a zip-code
 def get_state(zipcode):
     search = SearchEngine()
@@ -127,6 +117,7 @@ def get_state(zipcode):
         return result.state
     else:
         return 0
+
 
 def preprocess_data(gender, age, occupation, zipcode):
     # Perform any necessary preprocessing on the user data
@@ -142,6 +133,7 @@ def preprocess_data(gender, age, occupation, zipcode):
     data = [[gender, age, occupation, state[0]]]
     return data
 
+
 def load_movies_dataset():
     # Load your movies dataset or retrieve it from a database
     # Return the loaded dataset (e.g., dataframe)
@@ -149,6 +141,7 @@ def load_movies_dataset():
     # Example:
     df_movies = pd.read_csv("merged.csv")
     return df_movies
+
 
 def load_ratings_dataset():
     # Load your movies dataset or retrieve it from a database
@@ -158,10 +151,12 @@ def load_ratings_dataset():
     df_ratings = pd.read_csv('ratings.csv', sep=';')
     return df_ratings
 
+
 def get_similar_movies(selected_movie, df_movies, top_n=10):
     df_movies = pd.read_csv('movies.csv', sep=';', encoding='ISO-8859-1').drop(['Unnamed: 3'], axis=1)
     selected_movie_genres = df_movies.loc[df_movies['title'] == selected_movie, 'genres'].iloc[0].split('|')
-    similar_movies = df_movies[df_movies['genres'].apply(lambda x: any(genre in x.split('|') for genre in selected_movie_genres))].copy()
+    similar_movies = df_movies[
+        df_movies['genres'].apply(lambda x: any(genre in x.split('|') for genre in selected_movie_genres))].copy()
     similar_movies['similarity_score'] = similar_movies['genres'].apply(
         lambda x: len(set(x.split('|')).intersection(selected_movie_genres)) / len(
             set(x.split('|')).union(selected_movie_genres)))
@@ -169,6 +164,7 @@ def get_similar_movies(selected_movie, df_movies, top_n=10):
     top_10_similar_movies = similar_movies.iloc[1:11, :][['title', 'genres']]
 
     return top_10_similar_movies
+
 
 def get_movie_info(movie_title):
     # Create an instance of the IMDb class
@@ -191,6 +187,7 @@ def get_movie_info(movie_title):
 
     return None
 
+
 PAGES = {
     "Home": main,
     "Recommendations": display_recommendations,
@@ -198,11 +195,13 @@ PAGES = {
     "Item-Based Recommendations": item_based_recommendations
 }
 
+
 def run_app():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to", list(PAGES.keys()))
 
     PAGES[page]()
+
 
 if __name__ == "__main__":
     run_app()
