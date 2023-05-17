@@ -7,3 +7,4 @@ seaborn
 scikit-learn
 datasist
 uszipcode==1.0.1
+imdb
