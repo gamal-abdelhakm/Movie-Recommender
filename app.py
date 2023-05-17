@@ -12,10 +12,7 @@ def main():
     gender = st.selectbox("Gender", ["Male", "Female"])
     age = st.slider("Age", min_value=0, max_value=100, value=30)
     occupation = st.text_input("Occupation")
-
-    df_users = pd.read_csv('users'+'.csv',sep=';')
-    unique_zipcodes = df_users['zip-code'].unique()
-    zipcode = st.selectbox("Select Zipcode", unique_zipcodes)
+    zipcode = st.text_input("Zipcode")
 
     # Save user data
     if st.button("Predict Cluster"):
@@ -110,7 +107,7 @@ def get_state(zipcode):
     if result:
         return result.state
     else:
-        return -1
+        return 0
 
 def preprocess_data(gender, age, occupation, zipcode):
     # Perform any necessary preprocessing on the user data
