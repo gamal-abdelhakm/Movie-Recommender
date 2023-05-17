@@ -21,7 +21,7 @@ def main():
 
     # Save user data
     if st.button("Predict Cluster"):
-        cluster_number = predict_cluster(gender, age, occupation, zipcode)
+        cluster_number = predict_cluster(gender, age, occupation, selected_zipcode)
         st.success("Predicted Cluster Number: {}".format(cluster_number))
 
 def display_recommendations():
