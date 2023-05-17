@@ -121,10 +121,10 @@ def preprocess_data(gender, age, occupation, zipcode):
     # Initialize the zip-code search engine 
     state = get_state(zipcode)
     state_Encoder = joblib.load("state_Encoder.h5")
-    state = state_Encoder.transform(state)
+    state = state_Encoder.transform([state])
 
     # Return the preprocessed data as a list or array
-    data = [[gender, age, occupation,state]]
+    data = [[gender, age, occupation,state[0]]]
     return data
 
 def load_movies_dataset():
