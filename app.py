@@ -9,10 +9,13 @@ def main():
     st.title("User Data Clustering")
 
     # User input fields
-    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+    gender = st.selectbox("Gender", ["Male", "Female"])
     age = st.slider("Age", min_value=0, max_value=100, value=30)
     occupation = st.text_input("Occupation")
-    zipcode = st.text_input("Zipcode")
+
+    df_users = pd.read_csv('users.csv', sep=';')
+    unique_zipcodes = df_users['Zipcode'].unique()
+    zipcode = st.selectbox("Select Zipcode", unique_zipcodes)
 
     # Save user data
     if st.button("Predict Cluster"):
