@@ -19,9 +19,6 @@ def main():
         cluster_number = predict_cluster(gender, age, occupation, zipcode)
         st.success("Predicted Cluster Number: {}".format(cluster_number))
 
-        # Redirect to Recommendations page
-        st.experimental_set_query_params(cluster=cluster_number)
-
 def display_recommendations():
     cluster_number = int(st.experimental_get_query_params().get("cluster", [0])[0])
 
