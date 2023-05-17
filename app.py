@@ -21,7 +21,6 @@ def main():
 
         # Redirect to Recommendations page
         st.experimental_set_query_params(cluster=cluster_number)
-        st.experimental_rerun()
 
 def display_recommendations():
     cluster_number = int(st.experimental_get_query_params().get("cluster", [0])[0])
