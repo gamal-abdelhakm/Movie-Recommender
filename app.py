@@ -12,12 +12,14 @@ def main():
     # User input fields
     gender = st.selectbox("Gender", ["Male", "Female"])
     age = st.slider("Age", min_value=0, max_value=100, value=30)
-    occupation = st.text_input("Occupation")
+    occupations_list = ["Accountant","Actor","Architect","Artist","Astronaut","Athlete","Author","Baker","Banker","Barista","Bartender","Biologist","Butcher","Carpenter","Chef","Chemist","Civil engineer","Dentist","Doctor","Electrician","Engineer","Firefighter","Flight attendant","Graphic designer","Hairdresser","Journalist","Lawyer","Librarian","Mechanic","Musician","Nurse","Pharmacist","Photographer","Pilot","Police officer","Professor","Programmer","Psychologist","Scientist","Software developer","Teacher","Translator","Veterinarian","Waiter/Waitress","Web developer","Writer"]
+    occupation = st.selectbox("Select Occupation", occupations_list)
+    occupation = occupations_list.index(occupation)
 
     df_users = pd.read_csv('users.csv', sep=';')
     unique_zipcodes = df_users['zip-code'].unique()
     selected_zipcode = st.selectbox("Select Zipcode", unique_zipcodes)
-
+    
     # Save user data
     if st.button("Predict Cluster"):
         cluster_number = predict_cluster(gender, age, occupation, selected_zipcode)
