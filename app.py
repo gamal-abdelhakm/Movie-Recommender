@@ -13,8 +13,8 @@ def main():
     age = st.slider("Age", min_value=0, max_value=100, value=30)
     occupation = st.text_input("Occupation")
 
-    df_users = pd.read_csv('users.csv', sep=';')
-    unique_zipcodes = df_users['Zipcode'].unique()
+    df_users = pd.read_csv('users'+'.csv',sep=';')
+    unique_zipcodes = df_users['zip-code'].unique()
     zipcode = st.selectbox("Select Zipcode", unique_zipcodes)
 
     # Save user data
