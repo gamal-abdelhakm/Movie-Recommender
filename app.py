@@ -576,8 +576,8 @@ def content_based_recommendations():
                             with cols[j]:
                                 poster_url = movie_info.get('poster')
                                 if not poster_url:  # If poster is None, use a placeholder image
-                                poster_url = "https://via.placeholder.com/150"
-                                st.image(poster_url, width=200)
+                                    poster_url = "https://via.placeholder.com/150"
+                                    st.image(poster_url, width=200)
                                 st.markdown(f"**{movie_info['name']}**")
                                 st.caption(f"Genres: {movie['genres']}")
                                 st.progress(float(movie['similarity_score']))
