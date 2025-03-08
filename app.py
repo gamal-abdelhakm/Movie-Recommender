@@ -11,6 +11,7 @@ from collections import Counter
 import re
 import warnings
 warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 pd.options.mode.chained_assignment = None  # Suppress SettingWithCopyWarning
 
 # Set page configuration
@@ -327,7 +328,7 @@ def display_cluster_info(cluster_number):
     st.subheader("Top Rated Movies in Your Cluster")
     
     # Get top rated movies
-    top_rated = clustered_df.sort_values('rating', ascending=False).head(5)
+    top_rated = clustered_df.sort_values('rating', ascending=False).head(2)
     
     # Display movie cards in a row
     cols = st.columns(5)
