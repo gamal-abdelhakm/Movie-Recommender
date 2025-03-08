@@ -7,80 +7,41 @@ from sklearn.metrics.pairwise import cosine_similarity
 from uszipcode import SearchEngine
 import matplotlib.pyplot as plt
 import seaborn as sns
-from PIL import Image
-import requests
-from io import BytesIO
-import pickle
-import os
+from collections import Counter
 
 # Set page configuration
 st.set_page_config(
     page_title="Movie Recommendation System",
     page_icon="🎬",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Cache functions to improve performance
+# Cache data loading functions for better performance
 @st.cache_data
 def load_movies_dataset():
-    """Load and cache movies dataset"""
-    try:
-        df_movies = pd.read_csv("merged.csv")
-        return df_movies
-    except FileNotFoundError:
-        st.error("Movies dataset not found. Please check the file path.")
-        return pd.DataFrame()
+    df_movies = pd.read_csv("merged.csv")
+    return df_movies
 
 @st.cache_data
 def load_ratings_dataset():
-    """Load and cache ratings dataset"""
-    try:
-        df_ratings = pd.read_csv('ratings.csv', sep=';')
-        return df_ratings
-    except FileNotFoundError:
-        st.error("Ratings dataset not found. Please check the file path.")
-        return pd.DataFrame()
+    df_ratings = pd.read_csv('ratings.csv', sep=';')
+    return df_ratings
 
 @st.cache_data
 def load_users_dataset():
-    """Load and cache users dataset"""
-    try:
-        df_users = pd.read_csv('users.csv', sep=';')
-        return df_users
-    except FileNotFoundError:
-        st.error("Users dataset not found. Please check the file path.")
-        return pd.DataFrame()
+    df_users = pd.read_csv('users.csv', sep=';')
+    return df_users
 
 @st.cache_data
-def load_movies_data():
-    """Load and cache the movies data"""
-    try:
-        df_movies = pd.read_csv('movies.csv', sep=';', encoding='ISO-8859-1')
-        if 'Unnamed: 3' in df_movies.columns:
-            df_movies = df_movies.drop(['Unnamed: 3'], axis=1)
-        return df_movies
-    except FileNotFoundError:
-        st.error("Movies data file not found. Please check the file path.")
-        return pd.DataFrame()
+def load_movies_for_content():
+    df_movies = pd.read_csv('movies.csv', sep=';', encoding='ISO-8859-1')
+    if 'Unnamed: 3' in df_movies.columns:
+        df_movies = df_movies.drop(['Unnamed: 3'], axis=1)
+    return df_movies
 
-@st.cache_data
-def get_state(zipcode):
-    """Get state from zipcode using uszipcode"""
-    try:
-        search = SearchEngine()
-        result = search.by_zipcode(zipcode)
-        if result:
-            return result.state
-        else:
-            return "Unknown"
-    except Exception as e:
-        st.error(f"Error getting state for zipcode: {e}")
-        return "Unknown"
-
+# Movie information retrieval with caching
 @st.cache_data
 def get_movie_info(movie_title):
-    """Get movie information from IMDb"""
     try:
         ia = imdb.IMDb()
         movies = ia.search_movie(movie_title)
@@ -89,596 +50,654 @@ def get_movie_info(movie_title):
             movie = movies[0]  # Get the first result
             ia.update(movie)  # Fetch additional information
             
+            # Extract relevant details
             info = {
-                'title': movie.get('title', 'N/A'),
-                'year': movie.get('year', 'N/A'),
-                'rating': movie.get('rating', 'N/A'),
-                'genres': ', '.join(movie.get('genres', [])),
-                'plot': movie.get('plot outline', 'Plot not available'),
-                'director': ', '.join([d.get('name', 'N/A') for d in movie.get('directors', [])]),
-                'cast': ', '.join([a.get('name', 'N/A') for a in movie.get('cast', [])[:3]]),
-                'poster': movie.get('full-size cover url', movie.get('cover url', None))
+                'name': movie['title'],
+                'poster': movie.get('cover url', None),
+                'year': movie.get('year', 'Unknown'),
+                'cast': ', '.join([actor['name'] for actor in movie.get('cast', [])[:3]]),
+                'director': ', '.join([director['name'] for director in movie.get('directors', [])]),
+                'rating': movie.get('rating', 'Unknown'),
+                'plot': movie.get('plot outline', 'Plot not available')
             }
             return info
         return None
     except Exception as e:
-        st.warning(f"Error fetching movie info: {str(e)}")
-        return None
-
-def preprocess_data(gender, age, occupation, zipcode):
-    """Preprocess user data for cluster prediction"""
-    try:
-        # Convert gender to binary
-        gender_binary = 0 if gender == 'Male' else 1
-        
-        # Get state from zipcode
-        state = get_state(zipcode)
-        
-        # Load state encoder
-        try:
-            state_encoder = joblib.load("state_Encoder.h5")
-            state_encoded = state_encoder.transform([state])
-        except (FileNotFoundError, joblib.exceptions.JoblibException):
-            st.error("State encoder model not found or error loading it.")
-            return None
-            
-        # Return preprocessed data
-        return [[gender_binary, age, occupation, state_encoded[0]]]
-    except Exception as e:
-        st.error(f"Error preprocessing data: {e}")
+        st.error(f"Error fetching movie info: {e}")
         return None
 
 def predict_cluster(gender, age, occupation, zipcode):
-    """Predict user cluster based on input data"""
     try:
+        # Load the KMeans model
+        kmeans_model = joblib.load("cluster.h5")
+        
         # Preprocess user data
         user_data = preprocess_data(gender, age, occupation, zipcode)
         
-        if user_data is None:
-            return -1
-            
-        # Load KMeans model
-        try:
-            kmeans_model = joblib.load("cluster.h5")
-            # Predict cluster
-            cluster_number = kmeans_model.predict(user_data)[0]
-            return cluster_number
-        except (FileNotFoundError, joblib.exceptions.JoblibException):
-            st.error("Cluster model not found or error loading it.")
-            return -1
+        # Predict cluster number
+        cluster_number = kmeans_model.predict(user_data)
+        return int(cluster_number[0])
     except Exception as e:
-        st.error(f"Error predicting cluster: {e}")
-        return -1
+        st.error(f"Error in cluster prediction: {e}")
+        return 0
+
+def preprocess_data(gender, age, occupation, zipcode):
+    # Convert gender to binary representation
+    gender_binary = 0 if gender == 'Male' else 1
+    
+    # Get state from zipcode
+    state = get_state(zipcode)
+    
+    # Load state encoder
+    state_encoder = joblib.load("state_Encoder.h5")
+    state_encoded = state_encoder.transform([state])
+    
+    # Return the preprocessed data as a list or array
+    return [[gender_binary, age, occupation, state_encoded[0]]]
+
+def get_state(zipcode):
+    search = SearchEngine()
+    result = search.by_zipcode(zipcode)
+    if result:
+        return result.state
+    else:
+        return "Unknown"
 
 def get_similar_movies(selected_movie, top_n=10):
-    """Get content-based similar movies based on genres"""
-    try:
-        df_movies = load_movies_data()
-        
-        if df_movies.empty or selected_movie not in df_movies['title'].values:
-            return pd.DataFrame()
-            
-        # Get selected movie genres
-        selected_movie_genres = df_movies.loc[df_movies['title'] == selected_movie, 'genres'].iloc[0].split('|')
-        
-        # Find similar movies based on genre overlap
-        similar_movies = df_movies[df_movies['genres'].apply(
-            lambda x: any(genre in x.split('|') for genre in selected_movie_genres))].copy()
-            
-        # Calculate similarity score
-        similar_movies['similarity_score'] = similar_movies['genres'].apply(
-            lambda x: len(set(x.split('|')).intersection(selected_movie_genres)) / 
-                  len(set(x.split('|')).union(selected_movie_genres)))
-                  
-        # Sort by similarity and exclude the input movie
-        similar_movies = similar_movies.sort_values('similarity_score', ascending=False)
-        similar_movies = similar_movies[similar_movies['title'] != selected_movie]
-        
-        # Return top N similar movies
-        return similar_movies.head(top_n)[['title', 'genres', 'similarity_score']]
-    except Exception as e:
-        st.error(f"Error finding similar movies: {e}")
-        return pd.DataFrame()
+    df_movies = load_movies_for_content()
+    
+    # Get genres of selected movie
+    selected_movie_genres = df_movies.loc[df_movies['title'] == selected_movie, 'genres'].iloc[0].split('|')
+    
+    # Find movies with similar genres
+    similar_movies = df_movies[df_movies['genres'].apply(lambda x: any(genre in x.split('|') for genre in selected_movie_genres))].copy()
+    
+    # Calculate similarity score based on genre overlap
+    similar_movies['similarity_score'] = similar_movies['genres'].apply(
+        lambda x: len(set(x.split('|')).intersection(selected_movie_genres)) / len(
+            set(x.split('|')).union(selected_movie_genres)))
+    
+    # Sort by similarity score
+    similar_movies = similar_movies.sort_values('similarity_score', ascending=False)
+    
+    # Get top N similar movies (excluding the selected movie)
+    top_similar_movies = similar_movies[similar_movies['title'] != selected_movie].iloc[:top_n][['title', 'genres', 'similarity_score']]
+    
+    return top_similar_movies
 
 def get_item_based_recommendations(favorite_movie, top_n=10):
-    """Get item-based collaborative filtering recommendations"""
+    df_movies = load_movies_for_content()
+    df_ratings = load_ratings_dataset()
+    
+    # Create user-item matrix
+    user_item_matrix = df_ratings.pivot_table(index='movieId', columns='userId', values='rating').fillna(0)
+    
+    # Calculate item-item similarity
+    movie_similarities = cosine_similarity(user_item_matrix)
+    
     try:
-        df_movies = load_movies_data()
-        df_ratings = load_ratings_dataset()
+        # Find index of favorite movie
+        movie_index = df_movies[df_movies['title'] == favorite_movie].index[0]
         
-        if df_movies.empty or df_ratings.empty or favorite_movie not in df_movies['title'].values:
-            return pd.DataFrame()
-            
-        # Create user-item matrix
-        user_item_matrix = df_ratings.pivot_table(
-            index='movieId', 
-            columns='userId', 
-            values='rating'
-        ).fillna(0)
+        # Get similar movies
+        similar_movies_indices = movie_similarities[movie_index].argsort()[::-1][1:top_n+1]
+        similar_movies = df_movies.iloc[similar_movies_indices].copy()
         
-        # Calculate item similarities
-        movie_similarities = cosine_similarity(user_item_matrix)
+        # Add similarity score
+        similar_movies['similarity_score'] = [movie_similarities[movie_index][idx] for idx in similar_movies_indices]
         
-        # Get index of the favorite movie
-        movie_id = df_movies[df_movies['title'] == favorite_movie]['movieId'].iloc[0]
-        movie_index = user_item_matrix.index.get_loc(movie_id) if movie_id in user_item_matrix.index else -1
-        
-        if movie_index == -1:
-            return pd.DataFrame()
-            
-        # Get similar movies indices
-        similar_indices = movie_similarities[movie_index].argsort()[::-1][1:top_n+1]
-        similar_movie_ids = user_item_matrix.index[similar_indices]
-        
-        # Get similar movies details
-        similar_movies = df_movies[df_movies['movieId'].isin(similar_movie_ids)][['movieId', 'title', 'genres']]
-        similar_movies['similarity_score'] = [movie_similarities[movie_index][idx] for idx in similar_indices]
-        
-        return similar_movies.sort_values('similarity_score', ascending=False)
-    except Exception as e:
-        st.error(f"Error getting item-based recommendations: {e}")
-        return pd.DataFrame()
+        return similar_movies[['title', 'genres', 'similarity_score']]
+    except (IndexError, KeyError):
+        st.error(f"Could not find movie '{favorite_movie}' in the dataset")
+        return pd.DataFrame(columns=['title', 'genres', 'similarity_score'])
 
-def get_user_based_recommendations(cluster_number, top_n=5):
-    """Get user-based recommendations for a specific cluster"""
-    try:
-        df_movies = load_movies_dataset()
-        
-        if df_movies.empty:
-            return pd.DataFrame(), pd.DataFrame()
-            
-        # Filter movies by cluster
-        clustered_df = df_movies[df_movies['cluster'] == cluster_number]
-        
-        if clustered_df.empty:
-            return pd.DataFrame(), pd.DataFrame()
-            
-        # Get popular movies in the cluster
-        popular_movies = clustered_df['title'].value_counts().head(top_n)
-        popular_df = pd.DataFrame({'title': popular_movies.index, 'count': popular_movies.values})
-        
-        # Get highest rated movies in the cluster
-        avg_ratings = clustered_df.groupby('title')['rating'].agg(['mean', 'count'])
-        # Filter by minimum count of ratings to ensure reliability
-        min_count = 5
-        high_rated = avg_ratings[avg_ratings['count'] >= min_count].sort_values('mean', ascending=False)
-        high_rated_df = pd.DataFrame({
-            'title': high_rated.index[:top_n],
-            'avg_rating': high_rated['mean'][:top_n].round(2),
-            'rating_count': high_rated['count'][:top_n]
-        })
-        
-        return popular_df, high_rated_df
-    except Exception as e:
-        st.error(f"Error getting user-based recommendations: {e}")
-        return pd.DataFrame(), pd.DataFrame()
-
-def display_movie_card(movie_info, col):
-    """Display a movie card with image and details"""
+def display_movie_card(movie_info, col, show_plot=True):
     with col:
-        if movie_info:
-            # Display poster if available
+        st.subheader(movie_info['name'] + f" ({movie_info.get('year', '')})")
+        
+        # Create two columns within the card
+        img_col, details_col = st.columns([1, 2])
+        
+        with img_col:
             if movie_info.get('poster'):
-                try:
-                    response = requests.get(movie_info['poster'])
-                    img = Image.open(BytesIO(response.content))
-                    st.image(img, width=200)
-                except Exception:
-                    st.image("https://via.placeholder.com/200x300?text=No+Image", width=200)
+                st.image(movie_info['poster'], use_column_width=True)
             else:
-                st.image("https://via.placeholder.com/200x300?text=No+Image", width=200)
-                
-            # Display movie details
-            st.markdown(f"### {movie_info['title']} ({movie_info.get('year', 'N/A')})")
+                st.image("https://via.placeholder.com/300x450?text=No+Poster+Available", use_column_width=True)
+        
+        with details_col:
             st.markdown(f"**IMDb Rating:** {movie_info.get('rating', 'N/A')}")
-            st.markdown(f"**Genres:** {movie_info.get('genres', 'N/A')}")
             st.markdown(f"**Director:** {movie_info.get('director', 'N/A')}")
+            st.markdown(f"**Cast:** {movie_info.get('cast', 'N/A')}")
             
-            with st.expander("More Details"):
-                st.markdown(f"**Cast:** {movie_info.get('cast', 'N/A')}")
-                st.markdown(f"**Plot:** {movie_info.get('plot', 'Plot not available')}")
-        else:
-            st.warning("Movie information not available")
-
-def analyze_cluster(cluster_number):
-    """Analyze cluster characteristics"""
-    try:
-        df_movies = load_movies_dataset()
-        
-        if df_movies.empty:
-            return
-            
-        # Filter by cluster
-        cluster_data = df_movies[df_movies['cluster'] == cluster_number]
-        
-        if cluster_data.empty:
-            st.warning(f"No data available for cluster {cluster_number}")
-            return
-            
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Genre distribution
-            st.subheader("Genre Distribution")
-            all_genres = []
-            for genres in cluster_data['genres'].str.split('|'):
-                if isinstance(genres, list):
-                    all_genres.extend(genres)
-            
-            genre_counts = pd.Series(all_genres).value_counts().head(10)
-            
-            fig, ax = plt.subplots(figsize=(8, 5))
-            sns.barplot(x=genre_counts.values, y=genre_counts.index, palette='viridis', ax=ax)
-            ax.set_title(f"Top Genres in Cluster {cluster_number}")
-            ax.set_xlabel("Count")
-            st.pyplot(fig)
-            
-        with col2:
-            # Rating distribution
-            st.subheader("Rating Distribution")
-            fig, ax = plt.subplots(figsize=(8, 5))
-            sns.histplot(cluster_data['rating'], bins=10, kde=True, ax=ax)
-            ax.set_title(f"Rating Distribution in Cluster {cluster_number}")
-            ax.set_xlabel("Rating")
-            ax.set_ylabel("Count")
-            st.pyplot(fig)
-            
-        # Cluster statistics
-        st.subheader("Cluster Statistics")
-        stats_col1, stats_col2, stats_col3 = st.columns(3)
-        
-        with stats_col1:
-            st.metric("Average Rating", f"{cluster_data['rating'].mean():.2f}")
-            
-        with stats_col2:
-            st.metric("Number of Movies", f"{len(cluster_data)}")
-            
-        with stats_col3:
-            st.metric("Most Common Year", f"{cluster_data['year'].mode()[0]}")
-            
-    except Exception as e:
-        st.error(f"Error analyzing cluster: {e}")
+            if show_plot and movie_info.get('plot'):
+                st.markdown("**Plot:**")
+                st.markdown(f"_{movie_info.get('plot', 'Plot not available')}_")
 
 def main():
-    """Main function for user data clustering page"""
-    st.title("User Data Clustering")
-    st.write("Enter your demographic information to find your movie preference cluster.")
+    st.title("🎭 User Profile & Cluster Analysis")
     
-    # Load occupations
-    occupations_list = ["Accountant","Actor","Architect","Artist","Astronaut","Athlete","Author","Baker","Banker","Barista","Bartender","Biologist","Butcher","Carpenter","Chef","Chemist","Civil engineer","Dentist","Doctor","Electrician","Engineer","Firefighter","Flight attendant","Graphic designer","Hairdresser","Journalist","Lawyer","Librarian","Mechanic","Musician","Nurse","Pharmacist","Photographer","Pilot","Police officer","Professor","Programmer","Psychologist","Scientist","Software developer","Teacher","Translator","Veterinarian","Waiter/Waitress","Web developer","Writer"]
+    df_users = load_users_dataset()
     
-    # User input form
     with st.form("user_profile_form"):
+        st.subheader("Enter Your Information")
+        
         col1, col2 = st.columns(2)
         
         with col1:
             gender = st.selectbox("Gender", ["Male", "Female"])
             age = st.slider("Age", min_value=18, max_value=100, value=30)
-            
+        
         with col2:
+            occupations_list = ["Accountant", "Actor", "Architect", "Artist", "Astronaut", "Athlete", 
+                               "Author", "Baker", "Banker", "Barista", "Bartender", "Biologist", 
+                               "Butcher", "Carpenter", "Chef", "Chemist", "Civil engineer", "Dentist", 
+                               "Doctor", "Electrician", "Engineer", "Firefighter", "Flight attendant", 
+                               "Graphic designer", "Hairdresser", "Journalist", "Lawyer", "Librarian", 
+                               "Mechanic", "Musician", "Nurse", "Pharmacist", "Photographer", "Pilot", 
+                               "Police officer", "Professor", "Programmer", "Psychologist", "Scientist", 
+                               "Software developer", "Teacher", "Translator", "Veterinarian", 
+                               "Waiter/Waitress", "Web developer", "Writer"]
+            
             occupation = st.selectbox("Occupation", occupations_list)
             occupation_idx = occupations_list.index(occupation)
             
-            # Load user dataset for zipcodes
-            df_users = load_users_dataset()
-            unique_zipcodes = sorted(df_users['zip-code'].unique()) if not df_users.empty else ["10001"]
-            zipcode = st.selectbox("ZIP Code", unique_zipcodes)
+            unique_zipcodes = sorted(df_users['zip-code'].unique())
+            selected_zipcode = st.selectbox("Zipcode", unique_zipcodes)
         
-        submit_button = st.form_submit_button("Find My Cluster")
+        submitted = st.form_submit_button("Find My Movie Recommendations")
     
-    # Process form submission
-    if submit_button:
+    if submitted:
         with st.spinner("Analyzing your profile..."):
-            cluster_number = predict_cluster(gender, age, occupation_idx, zipcode)
+            cluster_number = predict_cluster(gender, age, occupation_idx, selected_zipcode)
             
-            if cluster_number >= 0:
-                st.success(f"You belong to Cluster {cluster_number}!")
-                st.session_state.cluster = cluster_number
-                
-                # Show cluster analysis button
-                if st.button("Analyze My Cluster"):
-                    st.session_state.page = "cluster_analysis"
-                    st.experimental_rerun()
-                
-                # Show recommendations button
-                if st.button("Get Movie Recommendations"):
-                    st.session_state.page = "recommendations"
-                    st.experimental_rerun()
-            else:
-                st.error("Unable to predict cluster. Please check your input or try again.")
+            st.session_state['user_cluster'] = cluster_number
+            st.session_state['user_profile'] = {
+                'gender': gender,
+                'age': age,
+                'occupation': occupation,
+                'zipcode': selected_zipcode
+            }
+            
+            st.success(f"🎉 Analysis complete! You belong to Cluster #{cluster_number}")
+            
+            # Create tabs for different visualizations
+            tab1, tab2 = st.tabs(["Cluster Information", "Similar Users"])
+            
+            with tab1:
+                display_cluster_info(cluster_number)
+            
+            with tab2:
+                display_similar_users(gender, age, occupation, cluster_number)
 
-def display_recommendations():
-    """Display movie recommendations for the user's cluster"""
-    st.title("Your Movie Recommendations")
+def display_cluster_info(cluster_number):
+    st.subheader(f"Cluster #{cluster_number} Profile")
     
-    if 'cluster' not in st.session_state:
-        st.warning("Please find your cluster first!")
-        if st.button("Go to Clustering"):
-            st.session_state.page = "main"
-            st.experimental_rerun()
+    df_movies = load_movies_dataset()
+    
+    # Filter movies for the cluster
+    clustered_df = df_movies[df_movies['cluster'] == cluster_number]
+    
+    if clustered_df.empty:
+        st.warning("No data available for this cluster.")
         return
     
-    cluster_number = st.session_state.cluster
-    st.subheader(f"Recommendations for Cluster {cluster_number}")
+    # Create a layout with two columns
+    col1, col2 = st.columns(2)
     
-    # Get recommendations
-    popular_movies, top_rated_movies = get_user_based_recommendations(cluster_number)
+    with col1:
+        # Top genres in cluster
+        st.subheader("Top Genres in Your Cluster")
+        
+        # Extract all genres from the cluster
+        all_genres = []
+        for genres in clustered_df['genres'].dropna():
+            if isinstance(genres, str):
+                all_genres.extend(genres.split('|'))
+        
+        # Count genre occurrences
+        genre_counts = Counter(all_genres)
+        top_genres = dict(genre_counts.most_common(10))
+        
+        # Create a bar chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.barh(list(top_genres.keys()), list(top_genres.values()), color='skyblue')
+        ax.set_xlabel('Count')
+        ax.set_title('Top 10 Genres in Your Cluster')
+        
+        # Add count labels to bars
+        for i, v in enumerate(top_genres.values()):
+            ax.text(v + 0.1, i, str(v), va='center')
+            
+        plt.tight_layout()
+        st.pyplot(fig)
     
-    if popular_movies.empty and top_rated_movies.empty:
+    with col2:
+        # Average ratings by genre
+        st.subheader("Average Ratings by Genre")
+        
+        # Calculate average rating per genre
+        genre_ratings = {}
+        for genre in genre_counts.keys():
+            genre_movies = clustered_df[clustered_df['genres'].str.contains(genre, na=False)]
+            if not genre_movies.empty:
+                avg_rating = genre_movies['rating'].mean()
+                genre_ratings[genre] = avg_rating
+        
+        # Sort and get top genres by rating
+        sorted_genre_ratings = dict(sorted(genre_ratings.items(), key=lambda x: x[1], reverse=True)[:10])
+        
+        # Create a bar chart
+        fig, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.barh(list(sorted_genre_ratings.keys()), list(sorted_genre_ratings.values()), color='lightgreen')
+        ax.set_xlabel('Average Rating')
+        ax.set_title('Top 10 Highest Rated Genres in Your Cluster')
+        
+        # Add rating labels to bars
+        for i, v in enumerate(sorted_genre_ratings.values()):
+            ax.text(v + 0.01, i, f"{v:.2f}", va='center')
+            
+        plt.tight_layout()
+        st.pyplot(fig)
+    
+    # Top rated movies
+    st.subheader("Top Rated Movies in Your Cluster")
+    
+    # Get top rated movies
+    top_rated = clustered_df.sort_values('rating', ascending=False).head(5)
+    
+    # Display movie cards in a row
+    cols = st.columns(5)
+    for i, (_, movie) in enumerate(top_rated.iterrows()):
+        movie_info = get_movie_info(movie['title'])
+        if movie_info:
+            with cols[i]:
+                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=150)
+                st.markdown(f"**{movie_info['name']}**")
+                st.markdown(f"Rating: {movie['rating']:.1f}/5")
+
+def display_similar_users(gender, age, occupation, cluster_number):
+    df_users = load_users_dataset()
+    
+    # Filter users in the same cluster
+    cluster_users = df_users[df_users['cluster'] == cluster_number]
+    
+    if cluster_users.empty:
+        st.warning("No similar users found in this cluster.")
+        return
+    
+    # Display demographics of the cluster
+    st.subheader("Cluster Demographics")
+    
+    # Create a layout with two columns
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Gender distribution
+        gender_counts = cluster_users['gender'].value_counts()
+        
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.pie(gender_counts, labels=gender_counts.index, autopct='%1.1f%%', 
+               colors=['lightblue', 'lightpink'], startangle=90)
+        ax.set_title('Gender Distribution')
+        st.pyplot(fig)
+    
+    with col2:
+        # Age distribution
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.histplot(cluster_users['age'], bins=10, kde=True, ax=ax)
+        ax.set_title('Age Distribution')
+        ax.set_xlabel('Age')
+        ax.set_ylabel('Count')
+        st.pyplot(fig)
+    
+    # Occupation distribution
+    st.subheader("Top Occupations in Your Cluster")
+    occupation_counts = cluster_users['occupation'].value_counts().head(10)
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars = ax.barh(occupation_counts.index, occupation_counts.values, color='lightgreen')
+    ax.set_xlabel('Count')
+    ax.set_title('Top Occupations')
+    
+    # Add count labels to bars
+    for i, v in enumerate(occupation_counts.values):
+        ax.text(v + 0.1, i, str(v), va='center')
+        
+    plt.tight_layout()
+    st.pyplot(fig)
+
+def display_recommendations():
+    if 'user_cluster' not in st.session_state:
+        st.warning("Please complete your profile analysis first to get recommendations.")
+        return
+    
+    cluster_number = st.session_state['user_cluster']
+    
+    st.title("🍿 Movie Recommendations")
+    st.subheader(f"Based on Cluster #{cluster_number}")
+    
+    # Load movie data
+    df_movies = load_movies_dataset()
+    
+    # Filter movies for the cluster
+    clustered_df = df_movies[df_movies['cluster'] == cluster_number]
+    
+    if clustered_df.empty:
         st.warning("No recommendations available for this cluster.")
         return
     
-    # Display popular movies
-    st.markdown("## Most Popular Movies in Your Cluster")
-    if not popular_movies.empty:
-        cols = st.columns(min(5, len(popular_movies)))
-        for i, (_, row) in enumerate(popular_movies.iterrows()):
-            if i < len(cols):
-                movie_info = get_movie_info(row['title'])
-                display_movie_card(movie_info, cols[i])
-    else:
-        st.info("No popular movies found for this cluster.")
+    # Create tabs for different recommendation types
+    tab1, tab2 = st.tabs(["Popular in Your Cluster", "Highest Rated in Your Cluster"])
     
-    # Display top rated movies
-    st.markdown("## Highest Rated Movies in Your Cluster")
-    if not top_rated_movies.empty:
-        cols = st.columns(min(5, len(top_rated_movies)))
-        for i, (_, row) in enumerate(top_rated_movies.iterrows()):
-            if i < len(cols):
-                with cols[i]:
-                    movie_info = get_movie_info(row['title'])
+    with tab1:
+        # Get the top movies by frequency
+        top_movies = clustered_df['title'].value_counts().head(10)
+        
+        st.subheader("Most Popular Movies in Your Cluster")
+        
+        # Create rows with 2 movies each
+        for i in range(0, min(6, len(top_movies)), 2):
+            cols = st.columns(2)
+            
+            for j in range(2):
+                if i + j < len(top_movies):
+                    movie_title = top_movies.index[i + j]
+                    movie_count = top_movies.iloc[i + j]
+                    
+                    movie_info = get_movie_info(movie_title)
                     if movie_info:
-                        display_movie_card(movie_info, cols[i])
-                        st.metric("Avg Rating", f"{row['avg_rating']}")
-                        st.caption(f"Based on {row['rating_count']} ratings")
-    else:
-        st.info("No highly rated movies found for this cluster.")
+                        display_movie_card(movie_info, cols[j], show_plot=False)
+                        cols[j].caption(f"Watched by {movie_count} users in your cluster")
     
-    # Back button
-    if st.button("Back to Profile"):
-        st.session_state.page = "main"
-        st.experimental_rerun()
+    with tab2:
+        # Get top rated movies with at least 5 ratings
+        movie_ratings = clustered_df.groupby('title').agg({
+            'rating': ['mean', 'count']
+        })
+        movie_ratings.columns = ['avg_rating', 'count']
+        top_rated = movie_ratings[movie_ratings['count'] >= 5].sort_values('avg_rating', ascending=False).head(10)
+        
+        st.subheader("Highest Rated Movies in Your Cluster")
+        
+        # Create rows with 2 movies each
+        for i in range(0, min(6, len(top_rated)), 2):
+            cols = st.columns(2)
+            
+            for j in range(2):
+                if i + j < len(top_rated):
+                    movie_title = top_rated.index[i + j]
+                    avg_rating = top_rated.iloc[i + j]['avg_rating']
+                    count = top_rated.iloc[i + j]['count']
+                    
+                    movie_info = get_movie_info(movie_title)
+                    if movie_info:
+                        display_movie_card(movie_info, cols[j], show_plot=False)
+                        cols[j].caption(f"Average Rating: {avg_rating:.2f}/5 (from {count} ratings)")
 
 def content_based_recommendations():
-    """Content-based movie recommendations page"""
-    st.title("Content-Based Movie Recommendations")
-    st.write("Get movie recommendations based on genre similarity.")
+    st.title("🧩 Content-Based Recommendations")
     
-    # Load movies data
-    df_movies = load_movies_data()
+    # Load movie data
+    df_movies = load_movies_for_content()
     
-    if df_movies.empty:
-        st.error("Movie data not available.")
-        return
+    # Sort movie titles alphabetically for easier selection
+    sorted_movies = sorted(df_movies['title'].unique())
     
-    # Select favorite movie
+    # Movie selection with search functionality
     favorite_movie = st.selectbox(
         "Select Your Favorite Movie", 
-        sorted(df_movies['title'].unique()),
-        index=0,
-        key="content_movie_select"
+        sorted_movies,
+        index=0
     )
     
-    if st.button("Get Recommendations", key="content_rec_button"):
+    if st.button("Get Recommendations"):
         with st.spinner("Finding similar movies..."):
             # Get similar movies
-            similar_movies = get_similar_movies(favorite_movie, top_n=10)
+            similar_movies = get_similar_movies(favorite_movie, top_n=6)
             
             if similar_movies.empty:
-                st.warning("No similar movies found.")
+                st.error("Could not find similar movies. Please try another movie.")
                 return
             
-            # Display results
-            st.subheader(f"Movies Similar to '{favorite_movie}'")
+            # Display favorite movie info
+            st.subheader("Your Selected Movie")
+            favorite_movie_info = get_movie_info(favorite_movie)
             
-            # Get genre information for the selected movie
-            selected_movie_genres = df_movies[df_movies['title'] == favorite_movie]['genres'].iloc[0]
-            st.info(f"Selected movie genres: {selected_movie_genres.replace('|', ', ')}")
+            if favorite_movie_info:
+                col = st.columns(1)[0]
+                display_movie_card(favorite_movie_info, col)
             
-            # Display movie cards in a grid
-            cols = st.columns(5)
-            for i, (_, row) in enumerate(similar_movies.iterrows()):
-                col_idx = i % 5
-                movie_info = get_movie_info(row['title'])
+            # Display similar movies
+            st.subheader("Similar Movies Based on Genre")
+            
+            # Create rows with 3 movies each
+            for i in range(0, len(similar_movies), 3):
+                cols = st.columns(3)
                 
-                with cols[col_idx]:
-                    if movie_info:
-                        # Display poster if available
-                        if movie_info.get('poster'):
-                            try:
-                                response = requests.get(movie_info['poster'])
-                                img = Image.open(BytesIO(response.content))
-                                st.image(img, width=150)
-                            except Exception:
-                                st.image("https://via.placeholder.com/150x225?text=No+Image", width=150)
-                        else:
-                            st.image("https://via.placeholder.com/150x225?text=No+Image", width=150)
-                            
-                        st.markdown(f"**{movie_info['title']}**")
-                        st.caption(f"Similarity: {row['similarity_score']:.2f}")
-                        st.caption(f"Genres: {row['genres'].replace('|', ', ')}")
+                for j in range(3):
+                    if i + j < len(similar_movies):
+                        movie = similar_movies.iloc[i + j]
+                        movie_info = get_movie_info(movie['title'])
                         
-                        # Show more details in expander
-                        with st.expander("Details"):
-                            st.markdown(f"**Year:** {movie_info.get('year', 'N/A')}")
-                            st.markdown(f"**IMDb:** {movie_info.get('rating', 'N/A')}")
-                            st.markdown(f"**Director:** {movie_info.get('director', 'N/A')}")
-                    else:
-                        st.markdown(f"**{row['title']}**")
-                        st.caption(f"Similarity: {row['similarity_score']:.2f}")
-                        st.caption(f"Genres: {row['genres'].replace('|', ', ')}")
+                        if movie_info:
+                            with cols[j]:
+                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                st.markdown(f"**{movie_info['name']}**")
+                                st.caption(f"Genres: {movie['genres']}")
+                                st.progress(float(movie['similarity_score']))
+                                st.caption(f"Similarity: {movie['similarity_score']:.2f}")
 
 def item_based_recommendations():
-    """Item-based collaborative filtering recommendations page"""
-    st.title("Item-Based Collaborative Filtering")
-    st.write("Get recommendations based on what other similar users liked.")
+    st.title("🔄 Item-Based Collaborative Filtering")
     
-    # Load movies data
-    df_movies = load_movies_data()
+    # Load movie data
+    df_movies = load_movies_for_content()
     
-    if df_movies.empty:
-        st.error("Movie data not available.")
-        return
+    # Sort movie titles alphabetically for easier selection
+    sorted_movies = sorted(df_movies['title'].unique())
     
-    # Select favorite movie
+    # Movie selection with search functionality
     favorite_movie = st.selectbox(
         "Select Your Favorite Movie", 
-        sorted(df_movies['title'].unique()),
-        index=0,
-        key="collab_movie_select"
+        sorted_movies,
+        index=0
     )
     
-    if st.button("Get Recommendations", key="collab_rec_button"):
-        with st.spinner("Finding recommendations..."):
+    if st.button("Get Recommendations"):
+        with st.spinner("Finding similar movies based on user ratings..."):
             # Get similar movies
-            similar_movies = get_item_based_recommendations(favorite_movie, top_n=10)
+            similar_movies = get_item_based_recommendations(favorite_movie, top_n=6)
             
             if similar_movies.empty:
-                st.warning("No recommendations found. This movie might not have enough ratings.")
+                st.error("Could not find similar movies. Please try another movie.")
                 return
             
-            # Display results
-            st.subheader(f"Users Who Liked '{favorite_movie}' Also Liked:")
+            # Display favorite movie info
+            st.subheader("Your Selected Movie")
+            favorite_movie_info = get_movie_info(favorite_movie)
             
-            # Display movie cards in a grid
-            cols = st.columns(5)
-            for i, (_, row) in enumerate(similar_movies.iterrows()):
-                col_idx = i % 5
-                movie_info = get_movie_info(row['title'])
+            if favorite_movie_info:
+                col = st.columns(1)[0]
+                display_movie_card(favorite_movie_info, col)
+            
+            # Display similar movies
+            st.subheader("Movies Liked by People Who Like This Movie")
+            
+            # Create rows with 3 movies each
+            for i in range(0, len(similar_movies), 3):
+                cols = st.columns(3)
                 
-                with cols[col_idx]:
-                    if movie_info:
-                        # Display poster if available
-                        if movie_info.get('poster'):
-                            try:
-                                response = requests.get(movie_info['poster'])
-                                img = Image.open(BytesIO(response.content))
-                                st.image(img, width=150)
-                            except Exception:
-                                st.image("https://via.placeholder.com/150x225?text=No+Image", width=150)
-                        else:
-                            st.image("https://via.placeholder.com/150x225?text=No+Image", width=150)
-                            
-                        st.markdown(f"**{movie_info['title']}**")
-                        st.caption(f"Correlation: {row['similarity_score']:.2f}")
-                        st.caption(f"Genres: {row['genres'].replace('|', ', ')}")
+                for j in range(3):
+                    if i + j < len(similar_movies):
+                        movie = similar_movies.iloc[i + j]
+                        movie_info = get_movie_info(movie['title'])
                         
-                        # Show more details in expander
-                        with st.expander("Details"):
-                            st.markdown(f"**Year:** {movie_info.get('year', 'N/A')}")
-                            st.markdown(f"**IMDb:** {movie_info.get('rating', 'N/A')}")
-                            st.markdown(f"**Director:** {movie_info.get('director', 'N/A')}")
-                    else:
-                        st.markdown(f"**{row['title']}**")
-                        st.caption(f"Correlation: {row['similarity_score']:.2f}")
-                        st.caption(f"Genres: {row['genres'].replace('|', ', ')}")
+                        if movie_info:
+                            with cols[j]:
+                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                st.markdown(f"**{movie_info['name']}**")
+                                st.caption(f"Genres: {movie['genres']}")
+                                st.progress(float(movie['similarity_score']))
+                                st.caption(f"Similarity: {movie['similarity_score']:.2f}")
 
-def cluster_analysis():
-    """Cluster analysis page"""
-    st.title("Cluster Analysis Dashboard")
+def hybrid_recommendations():
+    st.title("🔀 Hybrid Recommendation System")
     
-    if 'cluster' not in st.session_state:
-        st.warning("Please find your cluster first!")
-        if st.button("Go to Clustering"):
-            st.session_state.page = "main"
-            st.experimental_rerun()
+    if 'user_cluster' not in st.session_state:
+        st.warning("Please complete your profile analysis first to use the hybrid recommendation system.")
         return
     
-    cluster_number = st.session_state.cluster
-    st.subheader(f"Analysis for Cluster {cluster_number}")
+    # Get user information
+    cluster_number = st.session_state['user_cluster']
     
-    # Display cluster analysis
-    analyze_cluster(cluster_number)
+    # Load movie data
+    df_movies = load_movies_dataset()
+    df_content_movies = load_movies_for_content()
     
-    # Back button
-    if st.button("Back to Profile"):
-        st.session_state.page = "main"
-        st.experimental_rerun()
+    # Get top movies in user's cluster
+    clustered_df = df_movies[df_movies['cluster'] == cluster_number]
+    top_cluster_movies = clustered_df['title'].value_counts().head(20).index.tolist()
+    
+    # Let user select a movie from their cluster's favorites
+    st.subheader("Step 1: Select a movie you like from your cluster's favorites")
+    selected_movie = st.selectbox("Select a Movie", top_cluster_movies)
+    
+    if st.button("Generate Hybrid Recommendations"):
+        with st.spinner("Creating personalized recommendations..."):
+            # Get content-based recommendations
+            content_recs = get_similar_movies(selected_movie, top_n=10)
+            
+            # Get collaborative filtering recommendations
+            collab_recs = get_item_based_recommendations(selected_movie, top_n=10)
+            
+            # Combine recommendations
+            combined_recs = pd.concat([
+                content_recs.assign(source='content'),
+                collab_recs.assign(source='collaborative')
+            ])
+            
+            # Remove duplicates, keeping the higher similarity score
+            combined_recs = combined_recs.sort_values('similarity_score', ascending=False)
+            combined_recs = combined_recs.drop_duplicates(subset=['title'])
+            
+            # Get top 6 recommendations
+            top_recs = combined_recs.head(6)
+            
+            # Display selected movie info
+            st.subheader("Your Selected Movie")
+            selected_movie_info = get_movie_info(selected_movie)
+            
+            if selected_movie_info:
+                col = st.columns(1)[0]
+                display_movie_card(selected_movie_info, col)
+            
+            # Display hybrid recommendations
+            st.subheader("Your Personalized Recommendations")
+            
+            # Create rows with 3 movies each
+            for i in range(0, len(top_recs), 3):
+                cols = st.columns(3)
+                
+                for j in range(3):
+                    if i + j < len(top_recs):
+                        movie = top_recs.iloc[i + j]
+                        movie_info = get_movie_info(movie['title'])
+                        
+                        if movie_info:
+                            with cols[j]:
+                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                st.markdown(f"**{movie_info['name']}**")
+                                source_label = "Content-Based" if movie['source'] == 'content' else "Collaborative Filtering"
+                                st.caption(f"Source: {source_label}")
+                                st.progress(float(movie['similarity_score']))
+                                st.caption(f"Similarity: {movie['similarity_score']:.2f}")
 
-def about_page():
-    """About page with information about the system"""
-    st.title("About this Movie Recommendation System")
+def about():
+    st.title("ℹ️ About This Recommendation System")
     
     st.markdown("""
-    ### Overview
-    This application combines multiple recommendation approaches to help you discover movies you'll love:
+    ## Movie Recommendation System
     
-    1. **User Clustering** - Groups users with similar demographics and preferences
-    2. **Content-Based Filtering** - Recommends movies similar to ones you already like
-    3. **Collaborative Filtering** - Suggests movies based on what similar users enjoyed
+    This application uses multiple recommendation techniques to suggest movies:
     
-    ### How it Works
+    ### 1. User Clustering
+    - Groups users with similar demographics and preferences
+    - Provides recommendations based on what similar users enjoy
     
-    #### User Clustering
-    The system uses K-means clustering to group users with similar characteristics and movie preferences. 
-    By entering your demographic information, we can match you to a cluster of users with similar tastes.
+    ### 2. Content-Based Filtering
+    - Recommends movies based on genre similarity
+    - Finds movies with similar content to your favorites
     
-    #### Content-Based Recommendations
-    This approach analyzes movie features (primarily genres) to find similar movies. 
-    If you enjoy action movies with sci-fi elements, we'll find other movies that share those characteristics.
+    ### 3. Item-Based Collaborative Filtering
+    - Analyzes user rating patterns
+    - Suggests movies that users with similar tastes enjoyed
     
-    #### Collaborative Filtering
-    This method identifies patterns in user ratings to find movies you might enjoy. 
-    It works on the principle that users who agreed in the past will likely agree in the future.
+    ### 4. Hybrid Recommendations
+    - Combines multiple recommendation techniques
+    - Produces more diverse and personalized suggestions
+    
+    ### Data Sources
+    This system uses several datasets:
+    - Movie metadata (titles, genres)
+    - User ratings
+    - User demographic information
     
     ### Technologies Used
-    - **Python** - Core programming language
-    - **Streamlit** - Web application framework
-    - **Pandas** - Data processing and analysis
-    - **Scikit-learn** - Machine learning algorithms
-    - **IMDb API** - Movie information and posters
-    - **Matplotlib & Seaborn** - Data visualization
-    
-    ### Feedback
-    We're constantly improving our recommendation algorithms. Your feedback helps us make better suggestions!
+    - Streamlit for the web interface
+    - Scikit-learn for machine learning algorithms
+    - IMDb API for movie information and posters
+    - Pandas for data manipulation
+    - Matplotlib and Seaborn for visualizations
     """)
 
-# Define page navigation
 PAGES = {
-    "User Clustering": main,
+    "User Profile & Clustering": main,
     "Movie Recommendations": display_recommendations,
     "Content-Based Recommendations": content_based_recommendations,
-    "Collaborative Filtering": item_based_recommendations,
-    "Cluster Analysis": cluster_analysis,
-    "About": about_page
+    "Item-Based Recommendations": item_based_recommendations,
+    "Hybrid Recommendations": hybrid_recommendations,
+    "About": about
 }
 
 def run_app():
-    """Main application function"""
-    # Custom CSS
+    # Add custom CSS
     st.markdown("""
     <style>
-    .movie-title {
-        font-weight: bold;
-        margin-bottom: 0;
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
     }
-    .movie-info {
-        font-size: 0.9em;
-        color: #666;
-    }
-    .sidebar .sidebar-content {
-        background-color: #f5f5f5;
+    .stTabs [data-baseweb="tab-panel"] {
+        padding-top: 1rem;
     }
     </style>
     """, unsafe_allow_html=True)
     
-    # Initialize session state
-    if 'page' not in st.session_state:
-        st.session_state.page = "main"
-    
     # Sidebar navigation
     st.sidebar.title("🎬 Movie Recommender")
-    st.sidebar.markdown("---")
     
-    # Navigation menu
-    selected_page = st.sidebar.radio("Navigation", list(PAGES.keys()))
+    # Add user profile info to sidebar if available
+    if 'user_profile' in st.session_state:
+        profile = st.session_state['user_profile']
+        cluster = st.session_state.get('user_cluster', 'Unknown')
+        
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Your Profile")
+        st.sidebar.markdown(f"**Gender:** {profile['gender']}")
+        st.sidebar.markdown(f"**Age:** {profile['age']}")
+        st.sidebar.markdown(f"**Occupation:** {profile['occupation']}")
+        st.sidebar.markdown(f"**Cluster:** {cluster}")
+        st.sidebar.markdown("---")
     
-    # Display selected page
-    PAGES[selected_page]()
+    # Navigation options
+    page = st.sidebar.radio("Navigation", list(PAGES.keys()))
+    
+    # Run the selected page
+    PAGES[page]()
     
     # Footer
     st.sidebar.markdown("---")
-    st.sidebar.info("Movie Recommendation System © 2025")
+    st.sidebar.markdown("© 2025 Movie Recommendation System")
 
 if __name__ == "__main__":
     run_app()
