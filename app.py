@@ -11,7 +11,6 @@ from collections import Counter
 import re
 import warnings
 warnings.filterwarnings("ignore")
-warnings.filterwarnings("ignore", category=SyntaxWarning)
 pd.options.mode.chained_assignment = None  # Suppress SettingWithCopyWarning
 
 # Set page configuration
@@ -331,12 +330,15 @@ def display_cluster_info(cluster_number):
     top_rated = clustered_df.sort_values('rating', ascending=False).head(2)
     
     # Display movie cards in a row
-    cols = st.columns(5)
+    cols = st.columns(2)
     for i, (_, movie) in enumerate(top_rated.iterrows()):
         movie_info = get_movie_info(movie['title'])
         if movie_info:
             with cols[i]:
-                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=150)
+                poster_url = movie_info.get('poster')
+                if not poster_url:  # If poster is None, use a placeholder image
+                    poster_url = "https://via.placeholder.com/150"
+                    st.image(poster_url, width=150)
                 st.markdown(f"**{movie_info['name']}**")
                 st.markdown(f"Rating: {movie['rating']:.1f}/5")
 
@@ -572,7 +574,10 @@ def content_based_recommendations():
                         
                         if movie_info:
                             with cols[j]:
-                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                poster_url = movie_info.get('poster')
+                                if not poster_url:  # If poster is None, use a placeholder image
+                                poster_url = "https://via.placeholder.com/150"
+                                st.image(poster_url, width=200)
                                 st.markdown(f"**{movie_info['name']}**")
                                 st.caption(f"Genres: {movie['genres']}")
                                 st.progress(float(movie['similarity_score']))
@@ -625,7 +630,10 @@ def item_based_recommendations():
                         
                         if movie_info:
                             with cols[j]:
-                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                poster_url = movie_info.get('poster')
+                                if not poster_url:  # If poster is None, use a placeholder image
+                                    poster_url = "https://via.placeholder.com/150"
+                                    st.image(poster_url, width=200)
                                 st.markdown(f"**{movie_info['name']}**")
                                 st.caption(f"Genres: {movie['genres']}")
                                 st.progress(float(movie['similarity_score']))
@@ -671,8 +679,8 @@ def hybrid_recommendations():
             combined_recs = combined_recs.sort_values('similarity_score', ascending=False)
             combined_recs = combined_recs.drop_duplicates(subset=['title'])
             
-            # Get top 6 recommendations
-            top_recs = combined_recs.head(6)
+            # Get top 3 recommendations
+            top_recs = combined_recs.head(3)
             
             # Display selected movie info
             st.subheader("Your Selected Movie")
@@ -696,7 +704,10 @@ def hybrid_recommendations():
                         
                         if movie_info:
                             with cols[j]:
-                                st.image(movie_info.get('poster', "https://via.placeholder.com/300x450?text=No+Poster"), width=200)
+                                poster_url = movie_info.get('poster')
+                                if not poster_url:  # If poster is None, use a placeholder image
+                                    poster_url = "https://via.placeholder.com/150"
+                                    st.image(poster_url, width=200)
                                 st.markdown(f"**{movie_info['name']}**")
                                 source_label = "Content-Based" if movie['source'] == 'content' else "Collaborative Filtering"
                                 st.caption(f"Source: {source_label}")
