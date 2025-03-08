@@ -9,8 +9,6 @@ This repository implements a movie recommendation system using various technique
 - [Features](#features)
 - [Data Sources](#data-sources)
 - [Technologies Used](#technologies-used)
-- [Contributing](#contributing)
-- [License](#license)
 
 ## Installation
 
@@ -43,7 +41,7 @@ This repository implements a movie recommendation system using various technique
 ## Usage
 
 You can access the deployed application using the following link:
-[Movie Recommendation System](https://your-deployment-link.com)
+[Movie Recommendation System]([https://your-deployment-link.com](https://share.streamlit.io/gamal-abdelhakm/Movie-Recommender/main/app.py))
 
 Alternatively, you can run the application locally:
 
@@ -92,22 +90,3 @@ This system uses several datasets:
 - **IMDb API**: Movie information and posters.
 - **Pandas**: Data manipulation and analysis.
 - **Matplotlib & Seaborn**: Data visualizations.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request if you have any improvements or new features.
-
-1. Fork the repository.
-2. Create a new branch:
-    ```bash
-    git checkout -b feature/my-new-feature
-    ```
-3. Commit your changes:
-    ```bash
-    git commit -m 'Add some feature'
-    ```
-4. Push to the branch:
-    ```bash
-    git push origin feature/my-new-feature
-    ```
-5. Open a pull request.
