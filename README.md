@@ -40,9 +40,6 @@ This repository implements a movie recommendation system using various technique
 
 ## Usage
 
-You can access the deployed application using the following link:
-[Movie Recommendation System]([https://your-deployment-link.com](https://share.streamlit.io/gamal-abdelhakm/Movie-Recommender/main/app.py))
-
 Alternatively, you can run the application locally:
 
 1. Run the Streamlit app:
