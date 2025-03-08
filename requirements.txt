@@ -9,3 +9,4 @@ seaborn
 datasist
 IMDbPY
 plotly
+sqlalchemy_mate==1.0.0
