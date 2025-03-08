@@ -339,6 +339,43 @@ def display_cluster_info(cluster_number):
 def display_similar_users(gender, age, occupation, cluster_number):
     df_users = load_users_dataset()
     
+    # Check if 'cluster' column exists, if not, add it
+    if 'cluster' not in df_users.columns:
+        # Load the KMeans model
+        kmeans_model = joblib.load("cluster.h5")
+        
+        # Process each user to predict their cluster
+        clusters = []
+        for _, user in df_users.iterrows():
+            # Convert gender to binary
+            gender_binary = 0 if user['gender'] == 'M' else 1
+            
+            # Get user's age
+            user_age = user['age']
+            
+            # Get user's occupation
+            user_occupation = user['occupation']
+            
+            # Get state from zipcode
+            zipcode = str(user['zip-code']).split('-')[0]
+            user_state = get_state(zipcode)
+            
+            # Load state encoder
+            state_encoder = joblib.load("state_Encoder.h5")
+            try:
+                state_encoded = state_encoder.transform([user_state])
+                # Predict cluster
+                user_data = [[gender_binary, user_age, user_occupation, state_encoded[0]]]
+                cluster = kmeans_model.predict(user_data)[0]
+            except:
+                # Default to the current user's cluster if there's an issue
+                cluster = cluster_number
+                
+            clusters.append(cluster)
+        
+        # Add cluster column to the dataframe
+        df_users['cluster'] = clusters
+    
     # Filter users in the same cluster
     cluster_users = df_users[df_users['cluster'] == cluster_number]
     
@@ -354,7 +391,9 @@ def display_similar_users(gender, age, occupation, cluster_number):
     
     with col1:
         # Gender distribution
-        gender_counts = cluster_users['gender'].value_counts()
+        # Map M/F to Male/Female for display consistency
+        cluster_users['display_gender'] = cluster_users['gender'].map({'M': 'Male', 'F': 'Female'})
+        gender_counts = cluster_users['display_gender'].value_counts()
         
         fig, ax = plt.subplots(figsize=(6, 6))
         ax.pie(gender_counts, labels=gender_counts.index, autopct='%1.1f%%', 
@@ -373,7 +412,34 @@ def display_similar_users(gender, age, occupation, cluster_number):
     
     # Occupation distribution
     st.subheader("Top Occupations in Your Cluster")
-    occupation_counts = cluster_users['occupation'].value_counts().head(10)
+    
+    # Map numeric occupation codes to names if needed
+    if all(isinstance(x, (int, float)) for x in cluster_users['occupation']):
+        occupations_list = ["Accountant", "Actor", "Architect", "Artist", "Astronaut", "Athlete", 
+                           "Author", "Baker", "Banker", "Barista", "Bartender", "Biologist", 
+                           "Butcher", "Carpenter", "Chef", "Chemist", "Civil engineer", "Dentist", 
+                           "Doctor", "Electrician", "Engineer", "Firefighter", "Flight attendant", 
+                           "Graphic designer", "Hairdresser", "Journalist", "Lawyer", "Librarian", 
+                           "Mechanic", "Musician", "Nurse", "Pharmacist", "Photographer", "Pilot", 
+                           "Police officer", "Professor", "Programmer", "Psychologist", "Scientist", 
+                           "Software developer", "Teacher", "Translator", "Veterinarian", 
+                           "Waiter/Waitress", "Web developer", "Writer"]
+        
+        # Create a mapping function that handles out-of-range indices
+        def map_occupation(occ_id):
+            try:
+                occ_id = int(occ_id)
+                if 0 <= occ_id < len(occupations_list):
+                    return occupations_list[occ_id]
+                else:
+                    return f"Occupation {occ_id}"
+            except:
+                return f"Occupation {occ_id}"
+        
+        cluster_users['occupation_name'] = cluster_users['occupation'].apply(map_occupation)
+        occupation_counts = cluster_users['occupation_name'].value_counts().head(10)
+    else:
+        occupation_counts = cluster_users['occupation'].value_counts().head(10)
     
     fig, ax = plt.subplots(figsize=(10, 6))
     bars = ax.barh(occupation_counts.index, occupation_counts.values, color='lightgreen')
