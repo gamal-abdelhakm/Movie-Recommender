@@ -214,6 +214,7 @@ def main():
             occupation = st.selectbox("Occupation", occupations_list)
             occupation_idx = occupations_list.index(occupation)
             
+            df_users['zip-code'] = df_users['zip-code'].astype(str).str.split('-').str[0]
             unique_zipcodes = sorted(df_users['zip-code'].unique())
             selected_zipcode = st.selectbox("Zipcode", unique_zipcodes)
         
