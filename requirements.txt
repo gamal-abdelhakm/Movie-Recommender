@@ -1,9 +1,9 @@
-joblib==1.1.0
-numpy==1.24.4 
-pandas==1.4.2
+joblib
+numpy
+pandas
 matplotlib
 seaborn
 scikit-learn
 datasist
-uszipcode==1.0.1
+uszipcode
 IMDbPY
