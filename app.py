@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
 import re
+import warnings
+warnings.filterwarnings("ignore")
+pd.options.mode.chained_assignment = None  # Suppress SettingWithCopyWarning
 
 # Set page configuration
 st.set_page_config(
@@ -173,9 +176,9 @@ def display_movie_card(movie_info, col, show_plot=True):
         
         with img_col:
             if movie_info.get('poster'):
-                st.image(movie_info['poster'], use_column_width=True)
+                st.image(movie_info['poster'], use_container_width=True)
             else:
-                st.image("https://via.placeholder.com/300x450?text=No+Poster+Available", use_column_width=True)
+                st.image("https://via.placeholder.com/300x450?text=No+Poster+Available", use_container_width=True)
         
         with details_col:
             st.markdown(f"**IMDb Rating:** {movie_info.get('rating', 'N/A')}")
