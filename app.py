@@ -8,6 +8,7 @@ from uszipcode import SearchEngine
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
+import re
 
 # Set page configuration
 st.set_page_config(
@@ -107,21 +108,33 @@ def get_similar_movies(selected_movie, top_n=10):
     df_movies = load_movies_for_content()
     
     # Get genres of selected movie
-    selected_movie_genres = df_movies.loc[df_movies['title'] == selected_movie, 'genres'].iloc[0].split('|')
+    selected_movie_row = df_movies[df_movies['title'] == selected_movie]
+    if selected_movie_row.empty:
+        return pd.DataFrame(columns=['title', 'genres', 'similarity_score'])
     
-    # Find movies with similar genres
-    similar_movies = df_movies[df_movies['genres'].apply(lambda x: any(genre in x.split('|') for genre in selected_movie_genres))].copy()
+    selected_movie_genres = selected_movie_row['genres'].iloc[0].split('|')
     
-    # Calculate similarity score based on genre overlap
-    similar_movies['similarity_score'] = similar_movies['genres'].apply(
-        lambda x: len(set(x.split('|')).intersection(selected_movie_genres)) / len(
-            set(x.split('|')).union(selected_movie_genres)))
+    # Find movies with similar genres - use a safer approach that doesn't rely on regex
+    similar_movies = []
+    for _, movie in df_movies.iterrows():
+        if isinstance(movie['genres'], str):
+            movie_genres = movie['genres'].split('|')
+            # Calculate Jaccard similarity
+            intersection = len(set(movie_genres).intersection(selected_movie_genres))
+            union = len(set(movie_genres).union(selected_movie_genres))
+            similarity = intersection / union if union > 0 else 0
+            similar_movies.append({
+                'title': movie['title'],
+                'genres': movie['genres'],
+                'similarity_score': similarity
+            })
     
-    # Sort by similarity score
-    similar_movies = similar_movies.sort_values('similarity_score', ascending=False)
+    # Convert to DataFrame and sort
+    similar_movies_df = pd.DataFrame(similar_movies)
+    similar_movies_df = similar_movies_df.sort_values('similarity_score', ascending=False)
     
     # Get top N similar movies (excluding the selected movie)
-    top_similar_movies = similar_movies[similar_movies['title'] != selected_movie].iloc[:top_n][['title', 'genres', 'similarity_score']]
+    top_similar_movies = similar_movies_df[similar_movies_df['title'] != selected_movie].head(top_n)
     
     return top_similar_movies
 
@@ -248,7 +261,7 @@ def display_cluster_info(cluster_number):
         # Top genres in cluster
         st.subheader("Top Genres in Your Cluster")
         
-        # Extract all genres from the cluster
+        # Extract all genres from the cluster - safely without using regex
         all_genres = []
         for genres in clustered_df['genres'].dropna():
             if isinstance(genres, str):
@@ -275,10 +288,17 @@ def display_cluster_info(cluster_number):
         # Average ratings by genre
         st.subheader("Average Ratings by Genre")
         
-        # Calculate average rating per genre
+        # Calculate average rating per genre - safely without regex
         genre_ratings = {}
         for genre in genre_counts.keys():
-            genre_movies = clustered_df[clustered_df['genres'].str.contains(genre, na=False)]
+            # This is the problematic part - need to avoid regex
+            # genre_movies = clustered_df[clustered_df['genres'].str.contains(genre, na=False)]
+            
+            # Safer approach - use explicit string matching
+            genre_movies = clustered_df[clustered_df['genres'].apply(
+                lambda x: isinstance(x, str) and genre in x.split('|')
+            )]
+            
             if not genre_movies.empty:
                 avg_rating = genre_movies['rating'].mean()
                 genre_ratings[genre] = avg_rating
